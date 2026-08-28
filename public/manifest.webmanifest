@@ -2,14 +2,14 @@
   "name": "Her Space",
   "short_name": "Her Space",
   "description": "Hábitos, tese e evolução — o teu espaço pessoal.",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#fbf3fa",
   "theme_color": "#865fa8",
   "icons": [
-    {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png"},
-    {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png"}
+    {"src": "./icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "./icon-512.png", "sizes": "512x512", "type": "image/png"}
   ]
 }
