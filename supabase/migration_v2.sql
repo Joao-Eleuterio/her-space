@@ -1,12 +1,17 @@
 -- Executar UMA VEZ no SQL Editor do Supabase.
 -- Preserva todos os dados da primeira versão.
+alter table public.measurements drop constraint if exists measurements_user_id_measured_month_key;
+
 do $$ begin
- if exists(select 1 from information_schema.columns where table_schema='public' and table_name='measurements' and column_name='measured_month') then
+ if exists(select 1 from information_schema.columns where table_schema='public' and table_name='measurements' and column_name='measured_month')
+    and exists(select 1 from information_schema.columns where table_schema='public' and table_name='measurements' and column_name='measured_on') then
+  update public.measurements set measured_on=measured_month where measured_month is not null;
+  alter table public.measurements drop column measured_month;
+ elsif exists(select 1 from information_schema.columns where table_schema='public' and table_name='measurements' and column_name='measured_month') then
   alter table public.measurements rename column measured_month to measured_on;
  end if;
 end $$;
 
-alter table public.measurements drop constraint if exists measurements_user_id_measured_month_key;
 alter table public.measurements alter column measured_on set default current_date;
 
 create table if not exists public.art_ideas(
