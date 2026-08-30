@@ -45,19 +45,34 @@ function Auth(){
 function Dashboard({session}){
  const[tab,setTab]=useState("daily"),[habits,setHabits]=useState([]),[tasks,setTasks]=useState([]),[measures,setMeasures]=useState([]),[done,setDone]=useState(new Set()),[artList,setArtList]=useState([]),[art,setArt]=useState(""),[modal,setModal]=useState(null),[artOpen,setArtOpen]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState("");
  async function load(){
-  setLoading(true);
-  const q=await Promise.all([
+  setLoading(true);setError("");
+  const getData=()=>Promise.all([
    supabase.from("habits").select("*").order("sort_order"),
    supabase.from("thesis_tasks").select("*").order("sort_order"),
    supabase.from("measurements").select("*").order("measured_on"),
    supabase.from("habit_completions").select("habit_id").eq("completed_on",now()),
    supabase.from("art_ideas").select("*").order("sort_order")
   ]);
+  let q;
+  for(let attempt=0;attempt<3;attempt++){
+   q=await getData();
+   if(!q.some(x=>x.error))break;
+   if(attempt<2)await new Promise(resolve=>setTimeout(resolve,700*(attempt+1)));
+  }
   const bad=q.find(x=>x.error);
-  if(bad){setError("Executa o ficheiro supabase/schema.sql (e a migração mais recente) no SQL Editor do Supabase.");setLoading(false);return}
-  if(!q[0].data.length){await supabase.from("habits").insert(habitSeed.map((x,i)=>({name:x[0],icon:x[1],frequency:x[2],sort_order:i+1})));return load()}
-  if(!q[1].data.length){await supabase.from("thesis_tasks").insert(taskSeed.map((x,i)=>({title:x[0],start_date:x[1],end_date:x[2],sort_order:i+1})));return load()}
-  if(!q[4].data.length){await supabase.from("art_ideas").insert(artSeed.map((x,i)=>({label:x,sort_order:i+1})));return load()}
+  if(bad){
+   console.error("Erro ao carregar dados do Supabase",bad.error);
+   const schemaError=["42P01","42703","PGRST204","PGRST205"].includes(bad.error?.code);
+   setError(schemaError
+    ?"A estrutura da base de dados precisa de ser atualizada."
+    :navigator.onLine
+     ?"Não foi possível ligar à base de dados. Pode ser uma falha temporária."
+     :"O iPhone está sem ligação à internet.");
+   setLoading(false);return
+  }
+  if(!q[0].data.length){const r=await supabase.from("habits").insert(habitSeed.map((x,i)=>({name:x[0],icon:x[1],frequency:x[2],sort_order:i+1})));if(r.error){setError("Não foi possível criar os hábitos iniciais.");setLoading(false);return}return load()}
+  if(!q[1].data.length){const r=await supabase.from("thesis_tasks").insert(taskSeed.map((x,i)=>({title:x[0],start_date:x[1],end_date:x[2],sort_order:i+1})));if(r.error){setError("Não foi possível criar as tarefas iniciais.");setLoading(false);return}return load()}
+  if(!q[4].data.length){const r=await supabase.from("art_ideas").insert(artSeed.map((x,i)=>({label:x,sort_order:i+1})));if(r.error){setError("Não foi possível criar a roleta da arte.");setLoading(false);return}return load()}
   setHabits(q[0].data);setTasks(q[1].data);setMeasures(q[2].data);setDone(new Set(q[3].data.map(x=>x.habit_id)));setArtList(q[4].data);setArt(a=>a||q[4].data[0].label);setLoading(false)
  }
  useEffect(()=>{load()},[]);
@@ -66,7 +81,7 @@ function Dashboard({session}){
  async function remove(table,id,setter){if(!confirm("Queres mesmo eliminar?"))return;await supabase.from(table).delete().eq("id",id);setter(v=>v.filter(x=>x.id!==id))}
  function roll(){if(artList.length)setArt(artList[Math.floor(Math.random()*artList.length)].label)}
  const hp=Math.round(done.size/Math.max(habits.length,1)*100),tp=Math.round(tasks.filter(x=>x.is_done).length/Math.max(tasks.length,1)*100);
- return <div className="shell"><aside><Logo/><nav><Nav active={tab==="daily"} go={()=>setTab("daily")} icon={<CalendarDays/>}>Daily list</Nav><Nav active={tab==="thesis"} go={()=>setTab("thesis")} icon={<BookOpen/>}>Tese</Nav><Nav active={tab==="gym"} go={()=>setTab("gym")} icon={<Dumbbell/>}>Gym girlie</Nav></nav><div className="quote"><Sparkles/><p>Small steps, soft days,<br/><i>beautiful progress.</i></p></div><div className="profile"><b>♡</b><span>{session.user.email}<button onClick={()=>supabase.auth.signOut()}><LogOut/>Sair</button></span></div></aside><main><div className="mobiletop"><Logo/></div><div className="mobilenav"><Nav active={tab==="daily"} go={()=>setTab("daily")} icon={<CalendarDays/>}>Daily</Nav><Nav active={tab==="thesis"} go={()=>setTab("thesis")} icon={<BookOpen/>}>Tese</Nav><Nav active={tab==="gym"} go={()=>setTab("gym")} icon={<Dumbbell/>}>Gym</Nav></div>{error?<div className="error"><h2>Falta ativar a base de dados</h2><p>{error}</p></div>:loading?<div className="splash">a carregar…</div>:tab==="daily"?<Daily data={habits} done={done} progress={hp} toggle={toggleHabit} remove={id=>remove("habits",id,setHabits)} art={art} roll={roll} configure={()=>setArtOpen(true)} add={()=>setModal("habit")}/>:tab==="thesis"?<Thesis data={tasks} progress={tp} toggle={toggleTask} remove={id=>remove("thesis_tasks",id,setTasks)} add={()=>setModal("task")}/>:<Gym data={measures} remove={id=>remove("measurements",id,setMeasures)} add={()=>setModal("measure")}/>}</main>{modal&&<Modal type={modal} close={()=>setModal(null)} saved={load}/>}{artOpen&&<ArtModal ideas={artList} close={()=>setArtOpen(false)} saved={load}/>}</div>;
+ return <div className="shell"><aside><Logo/><nav><Nav active={tab==="daily"} go={()=>setTab("daily")} icon={<CalendarDays/>}>Daily list</Nav><Nav active={tab==="thesis"} go={()=>setTab("thesis")} icon={<BookOpen/>}>Tese</Nav><Nav active={tab==="gym"} go={()=>setTab("gym")} icon={<Dumbbell/>}>Gym girlie</Nav></nav><div className="quote"><Sparkles/><p>Small steps, soft days,<br/><i>beautiful progress.</i></p></div><div className="profile"><b>♡</b><span>{session.user.email}<button onClick={()=>supabase.auth.signOut()}><LogOut/>Sair</button></span></div></aside><main><div className="mobiletop"><Logo/></div><div className="mobilenav"><Nav active={tab==="daily"} go={()=>setTab("daily")} icon={<CalendarDays/>}>Daily</Nav><Nav active={tab==="thesis"} go={()=>setTab("thesis")} icon={<BookOpen/>}>Tese</Nav><Nav active={tab==="gym"} go={()=>setTab("gym")} icon={<Dumbbell/>}>Gym</Nav></div>{error?<div className="error"><h2>Não conseguimos carregar o teu espaço</h2><p>{error}</p><button className="primary" onClick={load}>Tentar novamente</button></div>:loading?<div className="splash">a carregar…</div>:tab==="daily"?<Daily data={habits} done={done} progress={hp} toggle={toggleHabit} remove={id=>remove("habits",id,setHabits)} art={art} roll={roll} configure={()=>setArtOpen(true)} add={()=>setModal("habit")}/>:tab==="thesis"?<Thesis data={tasks} progress={tp} toggle={toggleTask} remove={id=>remove("thesis_tasks",id,setTasks)} add={()=>setModal("task")}/>:<Gym data={measures} remove={id=>remove("measurements",id,setMeasures)} add={()=>setModal("measure")}/>}</main>{modal&&<Modal type={modal} close={()=>setModal(null)} saved={load}/>}{artOpen&&<ArtModal ideas={artList} close={()=>setArtOpen(false)} saved={load}/>}</div>;
 }
 function Daily({data,done,progress,toggle,remove,art,roll,configure,add}){const[vText,vRef]=verseOfDay();return <div className="page"><Title eyebrow={new Date().toLocaleDateString("pt-PT",{weekday:"long",day:"numeric",month:"long"})} title="Bom dia, bonita" sub="Hoje não precisas de fazer tudo. Só precisas de começar." action={add} button="Novo hábito"/><div className="dailygrid"><section className="card panel"><CardTitle label="O teu ritmo" title="Daily list"><div className="ring" style={{"--p":progress*3.6+"deg"}}><span>{progress}%</span></div></CardTitle>{data.map(h=><div className={"row "+(done.has(h.id)?"done":"")} key={h.id}><button className="check" onClick={()=>toggle(h.id)}>{done.has(h.id)&&<Check/>}</button><i>{iconMap[h.icon]||<Sparkles/>}</i><div><b>{h.name}</b><small>{h.frequency}</small></div><Delete go={()=>remove(h.id)}/></div>)}<button className="add" onClick={add}><Plus/>Adicionar à lista</button></section><div className="side"><section className="card art"><button className="artedit" onClick={configure} aria-label="Configurar roleta"><Pencil/></button><div className="arthead"><i><Palette/></i><div><em>Momento criativo</em><h2>Roleta da arte</h2></div></div><p>Deixa o acaso escolher e começa sem pensar demasiado.</p><div className="result"><small>Hoje vais…</small><b>{art}</b></div><button className="primary" onClick={roll}><RotateCcw/>Rodar a roleta</button></section><section className="card reminder"><Sparkles/><div><em>Lembrete do dia</em><p>“{vText}”</p><cite>{vRef}</cite></div></section></div></div></div>}
 function Thesis({data,progress,toggle,remove,add}){return <div className="page"><Title eyebrow="a tua investigação" title="A minha tese" sub="Um passo de cada vez até à defesa." action={add} button="Adicionar tarefa"/><div className="stats"><Stat l="Progresso geral" v={progress+"%"} n={data.filter(x=>x.is_done).length+" de "+data.length+" fases concluídas"}/><Stat l="Próximo marco" v="Set 2026" n="Submissão à comissão de ética"/><Stat l="Objetivo final" v="Jul 2027" n="Defesa da dissertação"/></div><section className="card panel"><CardTitle label="Planificação" title="Checklist da tese"><span className="pill"><CalendarDays/>Mar 2026 — Jul 2027</span></CardTitle>{data.map((t,i)=><div className={"task "+(t.is_done?"done":"")} key={t.id}><button className="check" onClick={()=>toggle(t)}>{t.is_done&&<Check/>}</button><i>{String(i+1).padStart(2,"0")}</i><div><b>{t.title}</b><small><CalendarDays/>{fmt(t.start_date)} — {fmt(t.end_date)}</small></div><Delete go={()=>remove(t.id)}/></div>)}</section></div>}
